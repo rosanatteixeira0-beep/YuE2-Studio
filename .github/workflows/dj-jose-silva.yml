@@ -44,7 +44,10 @@ jobs:
       - name: Escolher a versão do YuE2 Studio
         id: versao
         shell: pwsh
+        env:
+          PASSO: "Escolher a versão do YuE2 Studio"
         run: |
+          trap { Write-Host "::error title=$env:PASSO::$($_.ToString() -replace "`r?`n", '%0A')"; exit 1 }
           $tag = "${{ github.event.inputs.versao }}"
           if (-not $tag) { $tag = gh release view -R $env:ORIGINAL --json tagName --jq .tagName }
           if (-not $tag) { throw "Não encontrei nenhuma versão publicada do YuE2 Studio." }
@@ -62,7 +65,7 @@ jobs:
 
       - name: Código do YuE2 Studio ${{ steps.versao.outputs.tag }}
         if: steps.versao.outputs.saltar != 'true'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: ${{ env.ORIGINAL }}
           ref: ${{ steps.versao.outputs.tag }}
@@ -71,7 +74,7 @@ jobs:
 
       - name: A marca DJ José Silva (deste repositório)
         if: steps.versao.outputs.saltar != 'true'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           path: marca
           sparse-checkout: branding
@@ -79,7 +82,10 @@ jobs:
       - name: Aplicar a marca
         if: steps.versao.outputs.saltar != 'true'
         shell: pwsh
+        env:
+          PASSO: "Aplicar a marca"
         run: |
+          trap { Write-Host "::error title=$env:PASSO::$($_.ToString() -replace "`r?`n", '%0A')"; exit 1 }
           Copy-Item marca/branding fonte/branding -Recurse -Force
           node fonte/branding/aplicar-marca.mjs
           if ($LASTEXITCODE -ne 0) { throw "O script de marca parou: ver a mensagem acima." }
@@ -87,7 +93,10 @@ jobs:
       - name: Motor já compilado da versão oficial
         if: steps.versao.outputs.saltar != 'true'
         shell: pwsh
+        env:
+          PASSO: "Motor já compilado da versão oficial"
         run: |
+          trap { Write-Host "::error title=$env:PASSO::$($_.ToString() -replace "`r?`n", '%0A')"; exit 1 }
           $tag = "${{ steps.versao.outputs.tag }}"
           New-Item -ItemType Directory -Force motor | Out-Null
           gh release download $tag -R $env:ORIGINAL -p "*portable-windows-x64.zip" -D motor
@@ -104,7 +113,7 @@ jobs:
           }
           Remove-Item motor -Recurse -Force
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         if: steps.versao.outputs.saltar != 'true'
         with:
           node-version: 22
@@ -119,7 +128,10 @@ jobs:
       - name: Dependências da interface
         if: steps.versao.outputs.saltar != 'true'
         shell: pwsh
+        env:
+          PASSO: "Dependências da interface"
         run: |
+          trap { Write-Host "::error title=$env:PASSO::$($_.ToString() -replace "`r?`n", '%0A')"; exit 1 }
           npm --prefix fonte/app ci --no-audit --no-fund
           npm --prefix fonte/desktop ci --no-audit --no-fund
 
@@ -127,9 +139,11 @@ jobs:
         if: steps.versao.outputs.saltar != 'true'
         shell: pwsh
         env:
+          PASSO: "Compilar o instalador"
           DJJS_CHAVE_ATUALIZACOES: ${{ secrets.DJJS_CHAVE_ATUALIZACOES }}
           DJJS_SEM_TESTES_RUST: "1"
         run: |
+          trap { Write-Host "::error title=$env:PASSO::$($_.ToString() -replace "`r?`n", '%0A')"; exit 1 }
           $linhas = @("$env:DJJS_CHAVE_ATUALIZACOES" -split "`r?`n" | Where-Object { $_.Trim() })
           if ($linhas.Count -lt 2) {
             throw "Falta o segredo DJJS_CHAVE_ATUALIZACOES (Settings → Secrets and variables → Actions). Ver branding/LEIA-ME.md."
@@ -138,13 +152,21 @@ jobs:
           $env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = $linhas[1].Trim()
           $env:TAURI_UPDATER_PUBKEY = (Get-Content -Raw fonte/branding/marca.json | ConvertFrom-Json).chavePublicaAtualizacoes
           Set-Location fonte
-          ./scripts/build-release.ps1 -Version "${{ steps.versao.outputs.versao }}" -ReleaseNotes "DJ José Silva ${{ steps.versao.outputs.versao }}, baseado no YuE2 Studio ${{ steps.versao.outputs.tag }}."
-          if ($LASTEXITCODE -ne 0) { throw "A compilação falhou." }
+          $global:LASTEXITCODE = 0
+          ./scripts/build-release.ps1 -Version "${{ steps.versao.outputs.versao }}" -ReleaseNotes "DJ José Silva ${{ steps.versao.outputs.versao }}, baseado no YuE2 Studio ${{ steps.versao.outputs.tag }}." *>&1 | Tee-Object -FilePath ../compilacao.log
+          $codigo = $LASTEXITCODE
+          if ($codigo -ne 0 -or -not (Test-Path "release/${{ steps.versao.outputs.versao }}/latest.json")) {
+            $fim = (Get-Content ../compilacao.log -Tail 40) -join "`n"
+            throw "A compilação falhou (código $codigo). Últimas linhas:`n$fim"
+          }
 
       - name: Publicar nas Releases
         if: steps.versao.outputs.saltar != 'true'
         shell: pwsh
+        env:
+          PASSO: "Publicar nas Releases"
         run: |
+          trap { Write-Host "::error title=$env:PASSO::$($_.ToString() -replace "`r?`n", '%0A')"; exit 1 }
           $tag = "${{ steps.versao.outputs.tag }}"
           $versao = "${{ steps.versao.outputs.versao }}"
           $pasta = "fonte/release/$versao"
