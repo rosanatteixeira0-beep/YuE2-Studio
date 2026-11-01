@@ -1,0 +1,14 @@
+{
+  "nome": "DJ José Silva",
+  "nomeFicheiro": "DJ-Jose-Silva",
+  "identificador": "pt.oficialdjjosesilva.studio",
+  "repositorio": "rosanatteixeira0-beep/YuE2-Studio",
+  "site": "https://oficialdjjosesilva.pt",
+  "original": {
+    "nome": "YuE2 Studio",
+    "autor": "Ilya Timonin (Nerual Dreming)",
+    "repositorio": "timoncool/YuE2-Studio",
+    "licenca": "MIT"
+  },
+  "desligarNoticiasEEstatisticas": true
+}
