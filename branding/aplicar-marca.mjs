@@ -166,6 +166,81 @@ if (marca.desligarNoticiasEEstatisticas) {
     { feito: 'DJJS_LIGAR_HUB' });
 }
 
+// ── 6. Português de Portugal, a língua por defeito ───────────────────────────
+// Os textos ficam em branding/traducao/ e são copiados para app/i18n/.
+// Uma frase que o autor acrescente numa versão nova e ainda não esteja
+// traduzida aparece em inglês (nunca uma chave em bruto).
+
+/** Insere `entrada` como última propriedade do objeto literal de `export const nome`. */
+function inserirNoObjeto(caminho, nome, entrada) {
+  const f = ler(caminho);
+  if (f.depois === null) return;
+  if (f.depois.includes(entrada)) { jaFeitos++; return; }
+  const inicio = f.depois.search(new RegExp(`(?:export )?const ${nome}\\b[^=]*=\\s*\\{`));
+  if (inicio < 0) { problemas.push(`${caminho}: não encontrei «const ${nome} = {».`); return; }
+  const abre = f.depois.indexOf('{', f.depois.indexOf('=', inicio));
+  let nivel = 0, i = abre, aspa = null;
+  for (; i < f.depois.length; i++) {
+    const c = f.depois[i];
+    if (aspa) { if (c === '\\') i++; else if (c === aspa) aspa = null; continue; }
+    if (c === "'" || c === '"' || c === '`') { aspa = c; continue; }
+    if (c === '/' && f.depois[i + 1] === '/') { i = f.depois.indexOf('\n', i); continue; }
+    if (c === '{') nivel++;
+    else if (c === '}' && --nivel === 0) break;
+  }
+  if (nivel !== 0) { problemas.push(`${caminho}: o objeto ${nome} não fecha.`); return; }
+  const antes = f.depois.slice(0, i).replace(/\s+$/, '');
+  const virgula = antes.endsWith(',') || antes.endsWith('{') ? ' ' : ', ';
+  const multilinha = f.depois.slice(abre, i).includes('\n');
+  f.depois = antes + virgula + entrada + (multilinha ? ',\n' : ' ') + f.depois.slice(i);
+  aplicados++;
+}
+
+/** Acrescenta uma linha de import no topo do ficheiro (uma vez). */
+function importar(caminho, linha) {
+  const f = ler(caminho);
+  if (f.depois === null) return;
+  if (f.depois.includes(linha)) { jaFeitos++; return; }
+  f.depois = linha + '\n' + f.depois;
+  aplicados++;
+}
+
+const traducoes = [
+  [join(raiz, 'branding', 'traducao', 'pt-textos.json'), join(raiz, 'app', 'i18n', 'pt-textos.json')],
+  [join(raiz, 'branding', 'traducao', 'pt-extra.ts'), join(raiz, 'app', 'i18n', 'pt-extra.ts')],
+];
+
+const T = 'app/i18n/translations.ts';
+trocar(T, "export type Language = 'en' | 'zh' | 'ja' | 'ko' | 'ru';", "export type Language = 'en' | 'zh' | 'ja' | 'ko' | 'ru' | 'pt';");
+importar(T, "import ptTextos from './pt-textos.json';");
+trocar(T, 'export const LANGUAGE_NAMES: Record<Language, string> = {\n',
+  "export const LANGUAGE_NAMES: Record<Language, string> = {\n  pt: 'Português',\n", { feito: "pt: 'Português'" });
+inserirNoObjeto(T, 'translations', 'pt: { ...enAll, ...(ptTextos as Partial<Record<TranslationKey, string>>) }');
+
+const I = 'app/context/I18nContext.tsx';
+trocar(I, "stored === 'ko' || stored === 'ru') return stored;", "stored === 'ko' || stored === 'ru' || stored === 'pt') return stored;");
+trocar(I, "    return 'en';\n  });", "    return 'pt';\n  });");
+
+importar('app/i18n/songErrors.ts', "import { ptSongErrors } from './pt-extra';");
+inserirNoObjeto('app/i18n/songErrors.ts', 'BY_LANGUAGE', 'pt: { ...EN, ...ptSongErrors } as ErrorTexts');
+
+const W = 'app/i18n/songWriting.ts';
+importar(W, "import { ptSongTokenStrings, ptSongWritingStrings, ptSongDetailStrings } from './pt-extra';");
+inserirNoObjeto(W, 'songTokenStrings', 'pt: ptSongTokenStrings');
+inserirNoObjeto(W, 'songWritingStrings', 'pt: ptSongWritingStrings');
+inserirNoObjeto(W, 'songDetailStrings', 'pt: ptSongDetailStrings');
+
+const E = 'app/i18n/engineParity.ts';
+importar(E, "import { ptEngineParityLabels, ptPlanLabel } from './pt-extra';");
+inserirNoObjeto(E, 'engineParityLabels', 'pt: ptEngineParityLabels');
+inserirNoObjeto(E, 'planLabels', 'pt: ptPlanLabel');
+
+importar('app/i18n/midiImportOptions.ts', "import { ptMidiImportOptions } from './pt-extra';");
+inserirNoObjeto('app/i18n/midiImportOptions.ts', 'midiImportOptions', 'pt: ptMidiImportOptions');
+
+importar('app/i18n/trainingGuide.ts', "import { ptTrainingGuide } from './pt-extra';");
+inserirNoObjeto('app/i18n/trainingGuide.ts', 'trainingGuide', 'pt: ptTrainingGuide as Guide');
+
 // ── Resultado ────────────────────────────────────────────────────────────────
 
 if (problemas.length) {
@@ -186,13 +261,13 @@ for (const nome of readdirSync(pastaDesktop)) {
 }
 icones.push([join(raiz, 'branding', 'icones', 'app', 'brand-yue2.png'), join(raiz, 'app', 'public', 'brand', 'yue2.png')]);
 icones.push([join(raiz, 'branding', 'icones', 'app', 'favicon.png'), join(raiz, 'app', 'public', 'favicon.png')]);
-const iconesPorCopiar = icones.filter(([de, para]) => !existsSync(para) || !readFileSync(de).equals(readFileSync(para)));
+const iconesPorCopiar = [...icones, ...traducoes].filter(([de, para]) => !existsSync(para) || !readFileSync(de).equals(readFileSync(para)));
 
 const mudados = [...ficheiros].filter(([, f]) => f.antes !== f.depois);
 if (soVerificar) {
-  console.log(`Verificação OK: ${aplicados} alterações por aplicar, ${jaFeitos} já aplicadas, ${iconesPorCopiar.length} ícones por copiar.`);
+  console.log(`Verificação OK: ${aplicados} alterações por aplicar, ${jaFeitos} já aplicadas, ${iconesPorCopiar.length} ícones e traduções por copiar.`);
 } else {
   for (const [caminho, f] of mudados) writeFileSync(join(raiz, caminho), f.depois, 'utf8');
   for (const [de, para] of iconesPorCopiar) copyFileSync(de, para);
-  console.log(`Marca "${NOME}" aplicada: ${aplicados} alterações em ${mudados.length} ficheiros (${jaFeitos} já estavam feitas), ${iconesPorCopiar.length} ícones.`);
+  console.log(`Marca "${NOME}" aplicada: ${aplicados} alterações em ${mudados.length} ficheiros (${jaFeitos} já estavam feitas), ${iconesPorCopiar.length} ícones e traduções copiados.`);
 }
