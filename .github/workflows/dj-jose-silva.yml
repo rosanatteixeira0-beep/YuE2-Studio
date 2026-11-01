@@ -1,0 +1,166 @@
+name: Instalador DJ José Silva
+
+# Gera o instalador Windows da app "DJ José Silva" e publica-o nas Releases
+# deste repositório, com o ficheiro latest.json das atualizações automáticas.
+#
+# Parte sempre da última versão publicada do YuE2 Studio original (ou da que
+# for indicada à mão), aplica a marca da pasta branding/ e reaproveita o motor
+# já compilado dessa mesma versão oficial — o motor não muda com o nome.
+#
+# Precisa de um segredo no repositório:
+#   DJJS_CHAVE_ATUALIZACOES — 1.ª linha: a chave privada; 2.ª linha: a palavra-passe dela.
+
+on:
+  workflow_dispatch:
+    inputs:
+      versao:
+        description: "Versão do YuE2 Studio a usar (ex.: v3.8.3). Vazio = a mais recente."
+        required: false
+        default: ""
+  push:
+    branches: [main]
+    paths:
+      - "branding/**"
+      - ".github/workflows/dj-jose-silva.yml"
+  schedule:
+    # Todas as segundas-feiras: se o autor tiver lançado uma versão nova, gera a tua.
+    - cron: "17 6 * * 1"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: instalador-dj-jose-silva
+  cancel-in-progress: true
+
+jobs:
+  instalador:
+    runs-on: windows-latest
+    timeout-minutes: 240
+    env:
+      GH_TOKEN: ${{ github.token }}
+      ORIGINAL: timoncool/YuE2-Studio
+    steps:
+      - name: Escolher a versão do YuE2 Studio
+        id: versao
+        shell: pwsh
+        run: |
+          $tag = "${{ github.event.inputs.versao }}"
+          if (-not $tag) { $tag = gh release view -R $env:ORIGINAL --json tagName --jq .tagName }
+          if (-not $tag) { throw "Não encontrei nenhuma versão publicada do YuE2 Studio." }
+          $versao = $tag.TrimStart('v')
+          "tag=$tag" >> $env:GITHUB_OUTPUT
+          "versao=$versao" >> $env:GITHUB_OUTPUT
+          # No agendamento semanal, só continua se ainda não houver instalador desta versão.
+          $existe = $false
+          gh release view $tag -R "${{ github.repository }}" --json tagName 2>$null | Out-Null
+          if ($LASTEXITCODE -eq 0) { $existe = $true }
+          $global:LASTEXITCODE = 0
+          $saltar = ("${{ github.event_name }}" -eq 'schedule') -and $existe
+          "saltar=$($saltar.ToString().ToLower())" >> $env:GITHUB_OUTPUT
+          Write-Host "YuE2 Studio $tag (já publicado aqui: $existe; saltar: $saltar)"
+
+      - name: Código do YuE2 Studio ${{ steps.versao.outputs.tag }}
+        if: steps.versao.outputs.saltar != 'true'
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.ORIGINAL }}
+          ref: ${{ steps.versao.outputs.tag }}
+          fetch-depth: 0 # a página de novidades lê o histórico
+          path: fonte
+
+      - name: A marca DJ José Silva (deste repositório)
+        if: steps.versao.outputs.saltar != 'true'
+        uses: actions/checkout@v4
+        with:
+          path: marca
+          sparse-checkout: branding
+
+      - name: Aplicar a marca
+        if: steps.versao.outputs.saltar != 'true'
+        shell: pwsh
+        run: |
+          Copy-Item marca/branding fonte/branding -Recurse -Force
+          node fonte/branding/aplicar-marca.mjs
+          if ($LASTEXITCODE -ne 0) { throw "O script de marca parou: ver a mensagem acima." }
+
+      - name: Motor já compilado da versão oficial
+        if: steps.versao.outputs.saltar != 'true'
+        shell: pwsh
+        run: |
+          $tag = "${{ steps.versao.outputs.tag }}"
+          New-Item -ItemType Directory -Force motor | Out-Null
+          gh release download $tag -R $env:ORIGINAL -p "*portable-windows-x64.zip" -D motor
+          if ($LASTEXITCODE -ne 0) { throw "A versão $tag do YuE2 Studio não tem a versão portátil para Windows." }
+          $zip = Get-ChildItem motor -Filter *.zip | Select-Object -First 1
+          Expand-Archive $zip.FullName -DestinationPath motor/x -Force
+          $origem = Get-ChildItem motor/x -Directory -Recurse -Filter resources | Where-Object { Test-Path (Join-Path $_.FullName 'yue2-cpp') } | Select-Object -First 1
+          if (-not $origem) { throw "Não encontrei a pasta resources/yue2-cpp na versão portátil oficial." }
+          $destino = "fonte/desktop/src-tauri/resources"
+          New-Item -ItemType Directory -Force $destino | Out-Null
+          foreach ($parte in 'yue2-cpp', 'vst-host') {
+            Copy-Item (Join-Path $origem.FullName $parte) (Join-Path $destino $parte) -Recurse -Force
+            Write-Host "$parte :" (Get-Content -Raw (Join-Path $destino "$parte/runtime.json"))
+          }
+          Remove-Item motor -Recurse -Force
+
+      - uses: actions/setup-node@v4
+        if: steps.versao.outputs.saltar != 'true'
+        with:
+          node-version: 22
+
+      - uses: Swatinem/rust-cache@v2
+        if: steps.versao.outputs.saltar != 'true'
+        with:
+          workspaces: |
+            fonte -> target
+            fonte/desktop/src-tauri -> target
+
+      - name: Dependências da interface
+        if: steps.versao.outputs.saltar != 'true'
+        shell: pwsh
+        run: |
+          npm --prefix fonte/app ci --no-audit --no-fund
+          npm --prefix fonte/desktop ci --no-audit --no-fund
+
+      - name: Compilar o instalador
+        if: steps.versao.outputs.saltar != 'true'
+        shell: pwsh
+        env:
+          DJJS_CHAVE_ATUALIZACOES: ${{ secrets.DJJS_CHAVE_ATUALIZACOES }}
+          DJJS_SEM_TESTES_RUST: "1"
+        run: |
+          $linhas = @("$env:DJJS_CHAVE_ATUALIZACOES" -split "`r?`n" | Where-Object { $_.Trim() })
+          if ($linhas.Count -lt 2) {
+            throw "Falta o segredo DJJS_CHAVE_ATUALIZACOES (Settings → Secrets and variables → Actions). Ver branding/LEIA-ME.md."
+          }
+          $env:TAURI_SIGNING_PRIVATE_KEY = $linhas[0].Trim()
+          $env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = $linhas[1].Trim()
+          $env:TAURI_UPDATER_PUBKEY = (Get-Content -Raw fonte/branding/marca.json | ConvertFrom-Json).chavePublicaAtualizacoes
+          Set-Location fonte
+          ./scripts/build-release.ps1 -Version "${{ steps.versao.outputs.versao }}" -ReleaseNotes "DJ José Silva ${{ steps.versao.outputs.versao }}, baseado no YuE2 Studio ${{ steps.versao.outputs.tag }}."
+          if ($LASTEXITCODE -ne 0) { throw "A compilação falhou." }
+
+      - name: Publicar nas Releases
+        if: steps.versao.outputs.saltar != 'true'
+        shell: pwsh
+        run: |
+          $tag = "${{ steps.versao.outputs.tag }}"
+          $versao = "${{ steps.versao.outputs.versao }}"
+          $pasta = "fonte/release/$versao"
+          Get-ChildItem $pasta -File | Format-Table Name, Length | Out-Host
+          $ficheiros = Get-ChildItem $pasta -File | ForEach-Object { $_.FullName }
+          gh release delete $tag -R "${{ github.repository }}" --cleanup-tag -y 2>$null
+          $global:LASTEXITCODE = 0
+          $notas = @"
+          **DJ José Silva $versao**: instalador para Windows 10/11 (64 bits), com placa NVIDIA.
+
+          - Descarregar e abrir ``DJ-Jose-Silva_$($versao)_x64-setup.exe``.
+          - Os modelos (YuE2 e outros) descarregam-se dentro da app, na primeira vez.
+          - A app atualiza-se sozinha a partir daqui.
+
+          Baseado no [YuE2 Studio $tag](https://github.com/timoncool/YuE2-Studio/releases/tag/$tag) de Ilya Timonin (licença MIT).
+          Os pesos do modelo YuE2 são CC BY-NC 4.0: as músicas geradas são para uso não comercial.
+          "@
+          gh release create $tag @ficheiros -R "${{ github.repository }}" --title "DJ José Silva $versao" --notes $notas --target "${{ github.sha }}" --latest
+          if ($LASTEXITCODE -ne 0) { throw "Não consegui publicar a release." }

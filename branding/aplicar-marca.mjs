@@ -11,7 +11,7 @@
 // O código original é do YuE2 Studio, de Ilya Timonin (Nerual Dreming),
 // sob licença MIT. A licença e os créditos ficam sempre na app.
 
-import { readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, readdirSync, copyFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -90,6 +90,7 @@ json('desktop/src-tauri/tauri.conf.json', (c) => {
   for (const janela of c.app?.windows ?? []) janela.title = NOME;
   if (c.plugins?.updater) {
     c.plugins.updater.endpoints = [`${REPO}/releases/latest/download/latest.json`];
+    c.plugins.updater.pubkey = marca.chavePublicaAtualizacoes;
   }
 });
 
@@ -109,6 +110,17 @@ trocar('scripts/build-release.ps1',
   `url = "${REPO}/releases/download/v$Version/$assetName"`);
 trocar('scripts/build-release.ps1', `"YuE2-Studio-$Version-portable"`, `"${marca.nomeFicheiro}-$Version-portable"`);
 trocar('scripts/build-release.ps1', `"YuE2-Studio-$Version-portable-windows-x64.zip"`, `"${marca.nomeFicheiro}-$Version-portable-windows-x64.zip"`);
+// O nome do instalador no GitHub, sem espaços nem acentos (o GitHub altera-os,
+// e o ficheiro de atualizações tem de apontar para o nome exato).
+trocar('scripts/build-release.ps1',
+  `$assetName = $nsisInstaller.Name -replace ' ', '.'`,
+  `$assetName = "${marca.nomeFicheiro}_$($Version)_x64-setup.exe"`);
+// Os testes do serviço já correram na versão oficial que estamos a reaproveitar;
+// na compilação automática no GitHub (DJJS_SEM_TESTES_RUST=1) são saltados.
+trocar('scripts/build-release.ps1',
+  '    cargo test --workspace\n    if ($LASTEXITCODE -ne 0) { throw "cargo test failed with exit code $LASTEXITCODE" }\n',
+  '    if (-not $env:DJJS_SEM_TESTES_RUST) {\n        cargo test --workspace\n        if ($LASTEXITCODE -ne 0) { throw "cargo test failed with exit code $LASTEXITCODE" }\n    }\n',
+  { feito: 'DJJS_SEM_TESTES_RUST' });
 
 // ── 2. Nome visível na interface ─────────────────────────────────────────────
 
@@ -163,10 +175,24 @@ if (problemas.length) {
   process.exit(1);
 }
 
+// ── 5. Ícones: o logótipo do vinil "Jose Silva" ──────────────────────────────
+// branding/icones/desktop → ícones da app e do instalador do Windows
+// branding/icones/app     → ícone do menu lateral e do separador
+const icones = [];
+const pastaDesktop = join(raiz, 'branding', 'icones', 'desktop');
+for (const nome of readdirSync(pastaDesktop)) {
+  const destino = join(raiz, 'desktop', 'src-tauri', 'icons', nome);
+  if (existsSync(destino)) icones.push([join(pastaDesktop, nome), destino]);
+}
+icones.push([join(raiz, 'branding', 'icones', 'app', 'brand-yue2.png'), join(raiz, 'app', 'public', 'brand', 'yue2.png')]);
+icones.push([join(raiz, 'branding', 'icones', 'app', 'favicon.png'), join(raiz, 'app', 'public', 'favicon.png')]);
+const iconesPorCopiar = icones.filter(([de, para]) => !existsSync(para) || !readFileSync(de).equals(readFileSync(para)));
+
 const mudados = [...ficheiros].filter(([, f]) => f.antes !== f.depois);
 if (soVerificar) {
-  console.log(`Verificação OK: ${aplicados} alterações por aplicar, ${jaFeitos} já aplicadas.`);
+  console.log(`Verificação OK: ${aplicados} alterações por aplicar, ${jaFeitos} já aplicadas, ${iconesPorCopiar.length} ícones por copiar.`);
 } else {
   for (const [caminho, f] of mudados) writeFileSync(join(raiz, caminho), f.depois, 'utf8');
-  console.log(`Marca "${NOME}" aplicada: ${aplicados} alterações em ${mudados.length} ficheiros (${jaFeitos} já estavam feitas).`);
+  for (const [de, para] of iconesPorCopiar) copyFileSync(de, para);
+  console.log(`Marca "${NOME}" aplicada: ${aplicados} alterações em ${mudados.length} ficheiros (${jaFeitos} já estavam feitas), ${iconesPorCopiar.length} ícones.`);
 }

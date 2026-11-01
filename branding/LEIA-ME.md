@@ -3,56 +3,70 @@
 Esta pasta transforma o código do **YuE2 Studio** na app **DJ José Silva**.
 
 O código original é o [YuE2 Studio](https://github.com/timoncool/YuE2-Studio), de
-Ilya Timonin (Nerual Dreming), com licença **MIT**. A licença (`LICENSE`) e os
-créditos ao autor mantêm-se sempre na app, como a licença exige.
+Ilya Timonin (Nerual Dreming), com licença **MIT**. A licença e os créditos ao
+autor mantêm-se sempre na app, como a licença exige.
 
-## Como funciona
+## Descarregar o instalador
 
-Os ficheiros do autor original **não são alterados no repositório**. Só esta pasta
-`branding/` é acrescentada. As mudanças são aplicadas no momento de gerar o
-instalador, pelo script `aplicar-marca.mjs`.
+Na página **Releases** deste repositório, a versão mais recente tem o ficheiro
+`DJ-Jose-Silva_<versão>_x64-setup.exe`. É esse que se instala no Windows.
 
-Assim, quando o autor lança uma versão nova:
+## Como é gerado
 
-1. No GitHub, no teu repositório, carregas em **Sync fork → Update branch**.
-   Como só acrescentámos ficheiros novos, nunca há conflitos.
-2. Geras o instalador novo (o botão de gerar o instalador vem na próxima parte).
-3. O script volta a aplicar o nome "DJ José Silva" ao código novo.
+O workflow `.github/workflows/dj-jose-silva.yml` faz tudo no GitHub:
 
-Se o autor mudar algum dos sítios que o script altera, o script **pára e diz
-qual**, em vez de gerar uma app meio renomeada. Nesse caso, basta ajustar o script.
+1. Vai buscar o código da **última versão publicada** do YuE2 Studio original.
+2. Aplica a marca desta pasta (`aplicar-marca.mjs`).
+3. Reaproveita o **motor já compilado** dessa mesma versão oficial (o motor não
+   muda com o nome, e compilá-lo exigiria CUDA, Vulkan e muitas horas).
+4. Compila a app, assina o instalador com a tua chave de atualizações e publica
+   tudo nas Releases, incluindo o `latest.json` das atualizações automáticas.
+
+Corre sozinho:
+- sempre que algo muda nesta pasta `branding/`;
+- todas as segundas-feiras, se o autor original tiver lançado uma versão nova;
+- quando quiseres: separador **Actions → Instalador DJ José Silva → Run workflow**.
+
+Não é preciso fazer "Sync fork": o workflow parte sempre da versão oficial mais recente.
+
+## O segredo das atualizações (uma vez só)
+
+As atualizações automáticas só aceitam instaladores assinados por ti. A chave
+privada fica guardada como **segredo** do repositório (encriptada pelo GitHub,
+nunca no código):
+
+- **Settings → Secrets and variables → Actions → New repository secret**
+- Nome: `DJJS_CHAVE_ATUALIZACOES`
+- Valor: as duas linhas do ficheiro de chave (1.ª a chave, 2.ª a palavra-passe)
+
+Guarda também uma cópia desse ficheiro num sítio seguro. Se a perderes, as
+pessoas que já têm a app terão de instalar a versão seguinte à mão, uma vez.
+A chave **pública** está em `marca.json` e pode ser vista por todos.
 
 ## O que o script muda
 
 | O quê | Antes | Depois |
 |---|---|---|
 | Nome da app, janela e instalador | YuE2 Studio | DJ José Silva |
+| Ícones da app e do instalador | logótipo YuE2 | vinil "Jose Silva" |
 | Identificador da app no Windows | com.timoncool.yue2-studio | pt.oficialdjjosesilva.studio |
 | Nome do executável | YuE2-Studio.exe | DJ-Jose-Silva.exe |
-| Atualizações automáticas | repositório do autor | o teu repositório |
+| Língua da interface | inglês por defeito | português de Portugal por defeito |
+| Atualizações automáticas | repositório do autor | este repositório |
 | Notícias e estatísticas anónimas | servidor do autor | desligadas |
 | Página "Sobre" | autor original | o teu nome, o teu site e créditos ao original |
-| Textos de boas-vindas, partilha e avisos | "YuE2 Studio" | "DJ José Silva" |
 
-As definições estão em `marca.json` (nome, identificador, repositório, site).
+As definições estão em `marca.json`. Se o autor mudar algum dos sítios que o
+script altera, o script **pára e diz qual**, em vez de gerar uma app meio
+renomeada; nesse caso, basta ajustar o script.
 
 ## O que fica igual, de propósito
 
 - **Pasta de dados** (`%LOCALAPPDATA%\YuE2 Studio`): se já tiveres o YuE2 Studio
-  instalado, a app DJ José Silva usa os mesmos modelos já descarregados, sem
-  voltar a descarregar dezenas de GB.
+  instalado, a app usa os modelos já descarregados, sem os voltar a descarregar.
 - **Servidor MCP** em `http://127.0.0.1:8791/mcp`: é por aí que o Claude se liga à app.
-- **Downloads dos componentes** (motor, separação de pistas, etc.), que continuam
-  a vir dos sítios oficiais de onde a app os vai buscar.
-
-## Usar à mão
-
-```
-node branding/aplicar-marca.mjs --verificar   # só verifica
-node branding/aplicar-marca.mjs               # aplica
-```
-
-Pode correr-se várias vezes sem problema.
+- **Downloads dos componentes** (modelos, separação de pistas, etc.), que vêm dos
+  sítios oficiais de onde a app os vai buscar.
 
 ## Atenção à licença do modelo
 
