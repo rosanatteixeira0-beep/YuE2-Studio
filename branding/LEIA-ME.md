@@ -62,14 +62,18 @@ renomeada; nesse caso, basta ajustar o script.
 
 ## O que fica igual, de propósito
 
-- **Pasta de dados** (`%LOCALAPPDATA%\YuE2 Studio`): se já tiveres o YuE2 Studio
-  instalado, a app usa os modelos já descarregados, sem os voltar a descarregar.
+- **Modelos já descarregados**: a app DJ José Silva tem a sua própria pasta
+  (`%LOCALAPPDATA%\DJ José Silva\data`). Se o YuE2 Studio original já estiver
+  instalado, usar o botão **"Usar modelos que já tenho"** (Definições → Modelos)
+  e escolher a pasta dele: os modelos são ligados sem cópia, no mesmo disco.
 - **Servidor MCP** em `http://127.0.0.1:8791/mcp`: é por aí que o Claude se liga à app.
 - **Downloads dos componentes** (modelos, separação de pistas, etc.), que vêm dos
   sítios oficiais de onde a app os vai buscar.
 
 ## Atenção à licença do modelo
 
-O código da app é MIT, mas os pesos do modelo YuE2 e do SheetSage2 são
-**CC BY-NC 4.0**: as músicas geradas com eles são para uso **não comercial**.
-Mudar o nome da app não muda isso.
+Os pesos do YuE2 são CC BY-NC 4.0 **com uma permissão adicional para criadores**:
+músicos e criadores a título individual podem gerar músicas e publicá-las,
+vendê-las ou rentabilizá-las, sem taxas, desde que o uso seja responsável.
+Empresas precisam de licença própria. Ver o MODEL_LICENSE oficial em
+https://github.com/multimodal-art-projection/YuE
